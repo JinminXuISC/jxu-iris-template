@@ -1,0 +1,38 @@
+    ; ---- Development conveniences ----
+    ; Don't expire passwords in a dev container
+    zn "%SYS"
+    Do ##class(Security.Users).UnExpireUserPasswords("*")
+
+    ; Enable %Service_CallIn for Embedded Python
+    do ##class(Security.Services).Get("%Service_CallIn",.prop)
+    set prop("Enabled")=1
+    set prop("AutheEnabled")=48
+    do ##class(Security.Services).Modify("%Service_CallIn",.prop)
+
+    ; ---- Create the IRISDEV namespace (with its own database) ----
+    set dbDir = "/usr/irissys/mgr/irisdev/"
+    do ##class(%File).CreateDirectoryChain(dbDir)
+
+    ; 1) Create the physical database file (IRIS.DAT) on disk
+    set sc = ##class(SYS.Database).CreateDatabase(dbDir)
+    if 'sc { write "CreateDatabase failed: ",$System.Status.GetErrorText(sc),! halt }
+
+    ; 2) Register the database in the configuration
+    set dbProps("Directory") = dbDir
+    set sc = ##class(Config.Databases).Create("IRISDEV", .dbProps)
+    if 'sc { write "Config.Databases.Create failed: ",$System.Status.GetErrorText(sc),! halt }
+
+    ; 3) Create the namespace mapped to that database
+    set nsProps("Globals") = "IRISDEV"
+    set nsProps("Routines") = "IRISDEV"
+    set sc = ##class(Config.Namespaces).Create("IRISDEV", .nsProps)
+    if 'sc { write "Config.Namespaces.Create failed: ",$System.Status.GetErrorText(sc),! halt }
+
+    write "IRISDEV namespace created.",!
+
+    ; ---- Load application source into IRISDEV ----
+    zn "IRISDEV"
+    set sc = $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
+    if 'sc { write "LoadDir failed: ",$System.Status.GetErrorText(sc),! halt }
+
+    halt
