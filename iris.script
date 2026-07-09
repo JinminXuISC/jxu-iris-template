@@ -30,8 +30,13 @@
 
     write "IRISDEV namespace created.",!
 
-    ; ---- Load application source into IRISDEV ----
+    ; 4) Enable Interoperability (Productions) for the namespace
     zn "IRISDEV"
+    set sc = ##class(%Library.EnsembleMgr).EnableNamespace($namespace, 1)
+    if 'sc { write "EnableNamespace failed: ",$System.Status.GetErrorText(sc),! halt }
+    write "Interoperability enabled for IRISDEV.",!
+
+    ; ---- Load application source into IRISDEV ----
     set sc = $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
     if 'sc { write "LoadDir failed: ",$System.Status.GetErrorText(sc),! halt }
 
