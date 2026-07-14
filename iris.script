@@ -9,26 +9,37 @@
     set prop("AutheEnabled")=48
     do ##class(Security.Services).Modify("%Service_CallIn",.prop)
 
-    ; ---- Create the IRISDEV namespace (with its own database) ----
-    set dbDir = "/usr/irissys/mgr/irisdev/"
-    do ##class(%File).CreateDirectoryChain(dbDir)
+    ; ---- Create the IRISDEV namespace (idempotent) ----
+    ; Runs on every startup, but only creates things that are missing, so it is
+    ; safe to re-run against a persisted (Durable %SYS) data directory.
+    if '##class(Config.Namespaces).Exists("IRISDEV") {
+        ; Place the database under the *runtime* manager directory. With
+        ; Durable %SYS this resolves to the persisted volume (e.g.
+        ; /durable/irissys/mgr/), so the data survives container rebuilds.
+        set dbDir = $system.Util.ManagerDirectory()_"irisdev/"
+        do ##class(%File).CreateDirectoryChain(dbDir)
 
-    ; 1) Create the physical database file (IRIS.DAT) on disk
-    set sc = ##class(SYS.Database).CreateDatabase(dbDir)
-    if 'sc { write "CreateDatabase failed: ",$System.Status.GetErrorText(sc),! halt }
+        ; 1) Create the physical database file (IRIS.DAT) on disk
+        if '##class(%File).Exists(dbDir_"IRIS.DAT") {
+            set sc = ##class(SYS.Database).CreateDatabase(dbDir)
+            if 'sc { write "CreateDatabase failed: ",$System.Status.GetErrorText(sc),! halt }
+        }
 
-    ; 2) Register the database in the configuration
-    set dbProps("Directory") = dbDir
-    set sc = ##class(Config.Databases).Create("IRISDEV", .dbProps)
-    if 'sc { write "Config.Databases.Create failed: ",$System.Status.GetErrorText(sc),! halt }
+        ; 2) Register the database in the configuration
+        set dbProps("Directory") = dbDir
+        set sc = ##class(Config.Databases).Create("IRISDEV", .dbProps)
+        if 'sc { write "Config.Databases.Create failed: ",$System.Status.GetErrorText(sc),! halt }
 
-    ; 3) Create the namespace mapped to that database
-    set nsProps("Globals") = "IRISDEV"
-    set nsProps("Routines") = "IRISDEV"
-    set sc = ##class(Config.Namespaces).Create("IRISDEV", .nsProps)
-    if 'sc { write "Config.Namespaces.Create failed: ",$System.Status.GetErrorText(sc),! halt }
+        ; 3) Create the namespace mapped to that database
+        set nsProps("Globals") = "IRISDEV"
+        set nsProps("Routines") = "IRISDEV"
+        set sc = ##class(Config.Namespaces).Create("IRISDEV", .nsProps)
+        if 'sc { write "Config.Namespaces.Create failed: ",$System.Status.GetErrorText(sc),! halt }
 
-    write "IRISDEV namespace created.",!
+        write "IRISDEV namespace created.",!
+    } else {
+        write "IRISDEV namespace already exists; skipping creation.",!
+    }
 
     ; 4) Enable Interoperability (Productions) for the namespace
     zn "IRISDEV"
@@ -37,6 +48,8 @@
     write "Interoperability enabled for IRISDEV.",!
 
     ; ---- Load application source into IRISDEV ----
+    ; Runs on every startup so new/changed files under src/ are imported and
+    ; compiled automatically after a `docker compose up` / restart.
     set sc = $System.OBJ.LoadDir("/home/irisowner/dev/src","ck",,1)
     if 'sc { write "LoadDir failed: ",$System.Status.GetErrorText(sc),! halt }
 

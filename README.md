@@ -2,7 +2,8 @@
 
 A lightweight InterSystems IRIS template. It builds on the **IRIS Community
 Edition** image, creates an `IRISDEV` namespace, and loads any ObjectScript
-source under [src/](src/) into it at build time.
+source under [src/](src/) into it **on startup**. IRIS data is persisted
+across rebuilds via **Durable %SYS**.
 
 Inspired by the community [objectscript-docker-template](https://github.com/intersystems-community/objectscript-docker-template)
 and [iris-interoperability-template](https://github.com/intersystems-community/iris-interoperability-template),
@@ -39,7 +40,20 @@ Then open the **Management Portal**: http://localhost:52773/csp/sys/UtilHome.csp
 - A dedicated **`IRISDEV`** namespace with its own database.
 - Embedded Python `%Service_CallIn` enabled.
 - Passwords set to non-expiring (dev convenience).
-- Everything under [src/](src/) loaded into `IRISDEV`.
+- Everything under [src/](src/) loaded into `IRISDEV` on every startup.
+
+## Data persistence (Durable %SYS)
+
+IRIS instance data (databases, configuration, logs) is relocated to the
+`iris-data` named volume via `ISC_DATA_DIRECTORY`, so it survives
+`docker compose down` and image rebuilds. The `IRISDEV` namespace is created
+at first startup directly in the durable directory.
+
+To wipe all IRIS data and start fresh:
+
+```bash
+docker compose down -v   # -v removes the iris-data volume
+```
 
 ## Try it
 
@@ -64,9 +78,9 @@ do ##class(dc.sample.ObjectScript).Test()
 
 ```
 .
-├── Dockerfile           # builds on iris-community, runs iris.script
-├── docker-compose.yml   # service definition + port mapping
-├── iris.script          # creates IRISDEV namespace, loads src
+├── Dockerfile           # builds on iris-community (init runs at startup)
+├── docker-compose.yml   # service def, ports, Durable %SYS + startup hook
+├── iris.script          # creates IRISDEV namespace, loads src (idempotent)
 ├── merge.cpf            # config merge applied on startup
 └── src/                 # your ObjectScript classes
     └── dc/sample/ObjectScript.cls
@@ -74,8 +88,9 @@ do ##class(dc.sample.ObjectScript).Test()
 
 ## Reloading source during development
 
-The project is mounted at `/home/irisowner/dev`, so edit files under `src/`
-and reload without rebuilding:
+`src/` is loaded automatically on every `docker compose up` / restart. For a
+faster inner loop without restarting the container, either use the VS Code
+InterSystems ObjectScript extension (compile-on-save), or reload manually:
 
 ```bash
 docker compose exec iris iris session iris -U IRISDEV \
